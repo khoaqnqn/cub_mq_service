@@ -1,0 +1,17 @@
+{
+  "name": "cub_mq_service",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "amqplib": "^0.10.3",
+    "crypto-js": "^4.1.1",
+    "dotenv": "^16.0.3",
+    "lodash": "^4.17.21"
+  }
+}
