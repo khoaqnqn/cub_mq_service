@@ -196,7 +196,7 @@ class MQService {
 			if (!listenerPairs.length) return;
 
 			for (let index = 0; index < listenerPairs.length; index++) {
-				await MQService.recvMQMess(listenerPairs[index][0], listeners[index][1]);
+				await MQService.recvMQMess(listenerPairs[index][0], listenerPairs[index][1]);
 			}
 		} catch (error) {
 			throw error;
