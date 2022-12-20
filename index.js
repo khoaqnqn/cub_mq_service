@@ -1,8 +1,7 @@
-/* eslint-disable require-jsdoc */
 const amqplib = require( 'amqplib' );
 const CryptoJS = require( 'crypto-js' );
-const _ = require( 'lodash' );
 const { config } = require( 'dotenv' );
+const _ = require( 'lodash' );
 
 config({ path: `.env.${ process.env.NODE_ENV || 'development' }.local` });
 
@@ -10,58 +9,35 @@ config({ path: `.env.${ process.env.NODE_ENV || 'development' }.local` });
 const { MQ_PROTOCOL, MQ_HOST, MQ_VIRTUAL_PATH, MQ_USER, MQ_PASSWORD } = process.env;
 /* End MQ config */
 
-/* Force topics config */
-const MQ_TOPICS = {
-	REQUEST_APP_INIT: 'REQUEST_APP_INIT',
-	APP_INIT: 'APP_INIT',
-	CREATE_ACCOUNT: 'CREATE_ACCOUNT',
-	UPDATE_ACCOUNT: 'UPDATE_ACCOUNT',
-	CREATE_WORKSPACE: 'CREATE_WORKSPACE',
-	UPDATE_WORKSPACE: 'UPDATE_WORKSPACE',
-};
-const hashedTopics = _.reduce(
-	MQ_TOPICS,
-	(memo, topic) => {
-		memo[ topic ] = CryptoJS.SHA256(topic).toString();
-
-		return memo;
-	},
-	{}
-);
-const topicNames = _.reduce(
-	MQ_TOPICS,
-	(memo, topic) => {
-		// memo[ topic ] = hashedTopics[ topic ].slice(0, 10);
-		memo[ topic ] = topic;
-
-		return memo;
-	},
-	{}
-);
-const encodingKeys = _.reduce(
-	MQ_TOPICS,
-	(memo, topic) => {
-		memo[ topic ] = hashedTopics[ topic ].slice(-10);
-
-		return memo;
-	},
-	{}
-);
-/* End Force topics config */
-
 class MQSupport {
 
 	static connection;
-
 	static channels;
-
 	static isAlive;
+
+	static MQ_TOPICS = {};
+	static topicNames;
+	static encodingKeys;
+
+	static configTopics(topics) {
+		MQSupport.MQ_TOPICS = Object.assign(MQSupport.MQ_TOPICS, topics);
+		MQSupport.topicNames = topics;
+		MQSupport.encodingKeys = _.reduce(
+			topics,
+			(memo, topic) => {
+				memo[ topic ] = CryptoJS.SHA256(topic).toString().slice(-10);
+
+				return memo;
+			},
+			{}
+		);
+	}
 
 	static sendFunction(connectedChannel, topic) {
 		return msg => {
-			const encodedMsg = CryptoJS.AES.encrypt(JSON.stringify(msg), encodingKeys[ topic ]).toString();
+			const encodedMsg = CryptoJS.AES.encrypt(JSON.stringify(msg), MQSupport.encodingKeys[ topic ]).toString();
 
-			connectedChannel.channel.sendToQueue(topicNames[ topic ], Buffer.from(encodedMsg), { persistent: true });
+			connectedChannel.channel.sendToQueue(MQSupport.topicNames[ topic ], Buffer.from(encodedMsg), { persistent: true });
 		};
 	}
 
@@ -70,7 +46,7 @@ class MQSupport {
 			if (_.isArray(callback)) {
 				connectedChannel.hooks = callback;
 
-				connectedChannel.channel.consume(topicNames[ topic ], MQSupport.consumeFunction(connectedChannel, topic));
+				connectedChannel.channel.consume(MQSupport.topicNames[ topic ], MQSupport.consumeFunction(connectedChannel, topic));
 
 				return;
 			}
@@ -83,7 +59,7 @@ class MQSupport {
 
 			connectedChannel.hooks = [ callback ];
 
-			connectedChannel.channel.consume(topicNames[ topic ], MQSupport.consumeFunction(connectedChannel, topic));
+			connectedChannel.channel.consume(MQSupport.topicNames[ topic ], MQSupport.consumeFunction(connectedChannel, topic));
 		};
 	}
 
@@ -94,7 +70,7 @@ class MQSupport {
 			try {
 				const rawMsg = msg.content.toString();
 
-				decodedMsg = JSON.parse(CryptoJS.AES.decrypt(rawMsg, encodingKeys[ topic ]).toString(CryptoJS.enc.Utf8));
+				decodedMsg = JSON.parse(CryptoJS.AES.decrypt(rawMsg, MQSupport.encodingKeys[ topic ]).toString(CryptoJS.enc.Utf8));
 			} catch (error) {
 				decodedMsg = { error };
 			}
@@ -151,7 +127,7 @@ class MQSupport {
 	}
 
 	static async retryChannel(mode, topic) {
-		const encodedTopic = topicNames[ topic ];
+		const encodedTopic = MQSupport.topicNames[ topic ];
 		const channelKey = `${mode}_${encodedTopic}`;
 
 		MQSupport.channels[ channelKey ].isAlive = undefined;
@@ -164,7 +140,7 @@ class MQSupport {
 	}
 
 	static async getConnectedChannel(mode, topic, options) {
-		const encodedTopic = topicNames[ topic ];
+		const encodedTopic = MQSupport.topicNames[ topic ];
 		const channelKey = `${mode}_${encodedTopic}`;
 
 		await MQSupport.initConnection();
@@ -213,9 +189,19 @@ class MQSupport {
 
 class MQService {
 
+	static configTopics(topics) {
+		try {
+			if (!_.keys(topics).length || _.keys(MQSupport.MQ_TOPICS).length) throw new Error('Invalid input');
+
+			MQSupport.configTopics(topics);
+		} catch (error) {
+			throw error;
+		}
+	}
+
 	static async sendMQMess(topic, msg, options = {}) {
 		try {
-			if (!MQ_TOPICS[ topic ] || !_.isObject(msg)) throw new Error('Invalid input');
+			if (!MQSupport.MQ_TOPICS[ topic ] || !_.isObject(msg)) throw new Error('Invalid input');
 
 			const cachedChannel = await MQSupport.getConnectedChannel('sending', topic, options);
 
@@ -227,7 +213,7 @@ class MQService {
 
 	static async recvMQMess(topic, callback) {
 		try {
-			if (!MQ_TOPICS[ topic ] || typeof callback !== 'function') throw new Error('Invalid input');
+			if (!MQSupport.MQ_TOPICS[ topic ] || typeof callback !== 'function') throw new Error('Invalid input');
 
 			const cachedChannel = await MQSupport.getConnectedChannel('receiving', topic);
 
@@ -241,5 +227,5 @@ class MQService {
 
 module.exports = {
 	MQService,
-	MQ_TOPICS,
+	MQ_TOPICS: MQSupport.MQ_TOPICS,
 };
