@@ -139,6 +139,17 @@ class MQSupport {
 		if (mode === 'receiving') MQSupport.channels[ channelKey ].registerNewHook(hooks);
 	}
 
+	static async closeChannel(mode, topic) {
+		const encodedTopic = MQSupport.topicNames[ topic ];
+		const channelKey = `${mode}_${encodedTopic}`;
+
+		if (!MQSupport.channels[ channelKey ]) throw new Error('Invalid input');
+
+		await MQSupport.channels[ channelKey ].channel.close();
+
+		delete MQSupport.channels[ channelKey ];
+	}
+
 	static async getConnectedChannel(mode, topic, options) {
 		const encodedTopic = MQSupport.topicNames[ topic ];
 		const channelKey = `${mode}_${encodedTopic}`;
@@ -154,10 +165,6 @@ class MQSupport {
 				MQSupport.channels[ channelKey ].channel = await MQSupport.connection.createChannel();
 
 				MQSupport.channels[ channelKey ].channel.on('error', async () => {
-					await MQSupport.retryChannel(mode, topic);
-				});
-
-				MQSupport.channels[ channelKey ].channel.on('close', async () => {
 					await MQSupport.retryChannel(mode, topic);
 				});
 
@@ -232,6 +239,16 @@ class MQService {
 			const cachedChannel = await MQSupport.getConnectedChannel('receiving', topic);
 
 			cachedChannel.registerNewHook(callback);
+		} catch (error) {
+			throw error;
+		}
+	}
+
+	static async closeChannel(topic) {
+		try {
+			if (!MQSupport.MQ_TOPICS[ topic ]) throw new Error('Invalid input');
+
+			await MQSupport.closeChannel('receiving', topic);
 		} catch (error) {
 			throw error;
 		}
