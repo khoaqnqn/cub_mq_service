@@ -13,6 +13,8 @@ const { MQ_PROTOCOL, MQ_HOST, MQ_VIRTUAL_PATH, MQ_USER, MQ_PASSWORD } = process.
 
 class MQSupport {
 
+	static sequelizeConnection;
+
 	static connection;
 	static channels;
 	static isAlive;
@@ -20,7 +22,8 @@ class MQSupport {
 	static MQ_TOPICS = {};
 	static encodingKeys;
 
-	static configTopics(topics) {
+	static init(topics, sequelizeConnection) {
+		MQSupport.sequelizeConnection = sequelizeConnection;
 		MQSupport.MQ_TOPICS = _.reduce( topics, ( memo, topic ) => {
 			memo[ topic ] = `${ nodeEnv }.${ topic }`;
 
@@ -65,24 +68,30 @@ class MQSupport {
 
 	static consumeFunction(connectedChannel, topic) {
 		return async msg => {
-			let decodedMsg;
+			let transaction;
 
 			try {
-				const rawMsg = msg.content.toString();
+				let decodedMsg;
 
-				decodedMsg = JSON.parse(CryptoJS.AES.decrypt(rawMsg, MQSupport.encodingKeys[ topic ]).toString(CryptoJS.enc.Utf8));
-			} catch (error) {
-				decodedMsg = { error };
-			}
+				try {
+					const rawMsg = msg.content.toString();
 
-			for (let index = 0; index < connectedChannel.hooks.length; index++) {
-				if (index < connectedChannel.hooks.length - 1) {
-					await connectedChannel.hooks[ index ](decodedMsg);
-
-					continue;
+					decodedMsg = JSON.parse(CryptoJS.AES.decrypt(rawMsg, MQSupport.encodingKeys[ topic ]).toString(CryptoJS.enc.Utf8));
+				} catch (error) {
+					decodedMsg = { error };
 				}
 
-				await connectedChannel.hooks[ index ](decodedMsg, connectedChannel.channel.ack.bind(connectedChannel.channel, msg));
+				transaction = MQSupport.sequelizeConnection && await MQSupport.sequelizeConnection.createTransaction();
+
+				for (let index = 0; index < connectedChannel.hooks.length; index++) {
+					await connectedChannel.hooks[ index ](decodedMsg, transaction);
+				}
+
+				await connectedChannel.channel.ack(msg);
+
+				transaction && await transaction.commit();
+			} catch (error) {
+				transaction && await transaction.rollback();
 			}
 		};
 	}
@@ -196,11 +205,11 @@ class MQSupport {
 
 class MQService {
 
-	static configTopics(topics) {
+	static init(topics, sequelizeConnection) {
 		try {
 			if (!_.keys(topics).length || _.keys(MQSupport.MQ_TOPICS).length) throw new Error('Invalid input');
 
-			MQSupport.configTopics(topics);
+			MQSupport.init(topics, sequelizeConnection);
 		} catch (error) {
 			throw error;
 		}
