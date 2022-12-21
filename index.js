@@ -81,7 +81,7 @@ class MQSupport {
 					decodedMsg = { error };
 				}
 
-				transaction = MQSupport.sequelizeConnection && await MQSupport.sequelizeConnection.createTransaction();
+				transaction = MQSupport.sequelizeConnection && await MQSupport.sequelizeConnection.transaction();
 
 				for (let index = 0; index < connectedChannel.hooks.length; index++) {
 					await connectedChannel.hooks[ index ](decodedMsg, transaction);
