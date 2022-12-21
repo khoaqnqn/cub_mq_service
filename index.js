@@ -91,6 +91,8 @@ class MQSupport {
 
 				transaction && await transaction.commit();
 			} catch (error) {
+				await connectedChannel.channel.nack(msg);
+
 				transaction && await transaction.rollback();
 			}
 		};
