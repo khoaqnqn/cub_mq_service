@@ -219,12 +219,16 @@ class MQService {
 
 	static async hookListeners(listeners) {
 		try {
-			const listenerPairs = _.values(listeners);
+			const listenerConfigs = _.values(listeners);
 
-			if (!listenerPairs.length) return;
+			if (!listenerConfigs.length) return;
 
-			for (let index = 0; index < listenerPairs.length; index++) {
-				await MQService.recvMQMess(listenerPairs[index][0], listenerPairs[index][1]);
+			if (_.some(listenerConfigs, config => config.length !== 3)) throw new Error('Invalid listener');
+
+			const sortedListeners = _.sort( listenerConfigs, config => config[ 1 ] );
+
+			for (let index = 0; index < sortedListeners.length; index++) {
+				await MQService.recvMQMess(sortedListeners[index][0], sortedListeners[index][2]);
 			}
 		} catch (error) {
 			throw error;
