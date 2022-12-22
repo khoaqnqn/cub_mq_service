@@ -57,6 +57,8 @@ class MQSupport {
 			if (connectedChannel.hooks.length) {
 				if (!_.find(connectedChannel.hooks, callback)) connectedChannel.hooks.push(callback);
 
+				console.log( `Topic "${ topic }" had been hooked with ${ callback.toString() }\n\n` );
+
 				return;
 			}
 
@@ -67,6 +69,8 @@ class MQSupport {
 	}
 
 	static consumeFunction(connectedChannel, topic) {
+		console.log( `Topic "${ topic }" had been hooked with:\n${ _.map( connectedChannel.hooks, fn => fn.toString() ).join( '\n' ) }\n\n` );
+
 		return async msg => {
 			let transaction;
 
