@@ -225,7 +225,7 @@ class MQService {
 
 			if (_.some(listenerConfigs, config => config.length !== 3)) throw new Error('Invalid listener');
 
-			const sortedListeners = _.sort( listenerConfigs, config => config[ 1 ] );
+			const sortedListeners = _.sortBy( listenerConfigs, config => config[ 1 ] );
 
 			for (let index = 0; index < sortedListeners.length; index++) {
 				await MQService.recvMQMess(sortedListeners[index][0], sortedListeners[index][2]);
