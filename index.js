@@ -16,8 +16,8 @@ class MQSupport {
 	static encodingKeys;
 
 	static config(configs) {
-		MQSupport.MQ_CONFIGS = _.reduce( configs, ( memo, config ) => {
-			memo[ config ] = config;
+		MQSupport.MQ_CONFIGS = _.reduce( configs, ( memo, config, key ) => {
+			memo[ key ] = config;
 
 			return memo;
 		}, MQSupport.MQ_CONFIGS );
