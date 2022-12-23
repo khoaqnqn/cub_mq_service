@@ -1,15 +1,6 @@
 const amqplib = require( 'amqplib' );
 const CryptoJS = require( 'crypto-js' );
-const { config } = require( 'dotenv' );
 const _ = require( 'lodash' );
-
-const nodeEnv = process.env.NODE_ENV || 'development';
-
-config({ path: `.env.${ nodeEnv }.local` });
-
-/* MQ config */
-const { MQ_PROTOCOL, MQ_HOST, MQ_VIRTUAL_PATH, MQ_USER, MQ_PASSWORD } = process.env;
-/* End MQ config */
 
 class MQSupport {
 
@@ -19,13 +10,23 @@ class MQSupport {
 	static channels;
 	static isAlive;
 
+	static MQ_CONFIGS = {};
+
 	static MQ_TOPICS = {};
 	static encodingKeys;
+
+	static config(configs) {
+		MQSupport.MQ_CONFIGS = _.reduce( configs, ( memo, config ) => {
+			memo[ config ] = config;
+
+			return memo;
+		}, MQSupport.MQ_CONFIGS );
+	}
 
 	static init(topics, sequelizeConnection) {
 		MQSupport.sequelizeConnection = sequelizeConnection;
 		MQSupport.MQ_TOPICS = _.reduce( topics, ( memo, topic ) => {
-			memo[ topic ] = `${ nodeEnv }.${ topic }`;
+			memo[ topic ] = `${ MQSupport.MQ_CONFIGS[NODE_ENV] }.${ topic }`;
 
 			return memo;
 		}, MQSupport.MQ_TOPICS );
@@ -124,7 +125,8 @@ class MQSupport {
 	static async initConnection() {
 		try {
 			if (!MQSupport.isAlive) {
-				MQSupport.connection = await amqplib.connect(`${MQ_PROTOCOL}://${MQ_USER}:${MQ_PASSWORD}@${MQ_HOST}/${MQ_VIRTUAL_PATH}`);
+				MQSupport.connection = await amqplib
+				.connect(`${MQSupport.MQ_CONFIGS[MQ_PROTOCOL]}://${MQSupport.MQ_CONFIGS[MQ_USER]}:${MQSupport.MQ_CONFIGS[MQ_PASSWORD]}@${MQSupport.MQ_CONFIGS[MQ_HOST]}/${MQSupport.MQ_CONFIGS[MQ_VIRTUAL_PATH]}`);
 
 				MQSupport.connection.on('error', async () => {
 					await MQSupport.retryConnection();
@@ -210,6 +212,14 @@ class MQSupport {
 }
 
 class MQService {
+
+	static config(configs) {
+		try {
+			MQSupport.config(configs);
+		} catch (error) {
+			throw error;
+		}
+	}
 
 	static init(topics, sequelizeConnection) {
 		try {
