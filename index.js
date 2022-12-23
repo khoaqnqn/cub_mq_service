@@ -37,39 +37,37 @@ class MQSupport {
 		}, {} );
 	}
 
-	static sendFunction(connectedChannel, topic) {
-		return async msg => {
-			const encodedMsg = CryptoJS.AES.encrypt(JSON.stringify(msg), MQSupport.encodingKeys[ topic ]).toString();
+	static sendFunction = (connectedChannel, topic) => async msg => {
+		const encodedMsg = CryptoJS.AES.encrypt(JSON.stringify(msg), MQSupport.encodingKeys[ topic ]).toString();
 
-			await connectedChannel.channel.sendToQueue(MQSupport.MQ_TOPICS[ topic ], Buffer.from(encodedMsg), { persistent: true });
-		};
-	}
+		await connectedChannel.channel.sendToQueue(MQSupport.MQ_TOPICS[ topic ], Buffer.from(encodedMsg), { persistent: true });
+	};
 
-	static registerNewHookFunction(connectedChannel, topic) {
-		return async callback => {
-			if (_.isArray(callback)) {
-				connectedChannel.hooks = callback;
-
-				await connectedChannel.channel.consume(MQSupport.MQ_TOPICS[ topic ], MQSupport.consumeFunction(connectedChannel, topic));
-
-				return;
-			}
-
-			if (connectedChannel.hooks.length) {
-				if (!_.find(connectedChannel.hooks, callback)) connectedChannel.hooks.push(callback);
-
-				console.log( `Topic "${ topic }" had been hooked with '${ callback.name }'` );
-
-				return;
-			}
-
-			connectedChannel.hooks = [ callback ];
+	static registerNewHookFunction = (connectedChannel, topic) => async callback => {
+		if (_.isArray(callback)) {
+			connectedChannel.hooks = callback;
 
 			await connectedChannel.channel.consume(MQSupport.MQ_TOPICS[ topic ], MQSupport.consumeFunction(connectedChannel, topic));
-		};
-	}
 
-	static consumeFunction(connectedChannel, topic) {
+			return;
+		}
+
+		if (connectedChannel.hooks.length) {
+			if (!_.find(connectedChannel.hooks, callback)) {
+				connectedChannel.hooks.push(callback);
+
+				console.log( `Topic "${ topic }" had been hooked with '${ callback.name }'` );
+			}
+
+			return;
+		}
+
+		connectedChannel.hooks = [ callback ];
+
+		await connectedChannel.channel.consume(MQSupport.MQ_TOPICS[ topic ], MQSupport.consumeFunction(connectedChannel, topic));
+	};
+
+	static consumeFunction = (connectedChannel, topic) => {
 		console.log( `Topic "${ topic }" had been hooked with:\n${ _.map( connectedChannel.hooks, fn => `'${ fn.name }'` ).join( '\n' ) }` );
 
 		return async msg => {
@@ -196,8 +194,7 @@ class MQSupport {
 
 					MQSupport.channels[ channelKey ].send = MQSupport.sendFunction(MQSupport.channels[ channelKey ], topic);
 				} else if (mode === 'receiving') {
-					MQSupport.channels[ channelKey ].registerNewHook = MQSupport
-					.registerNewHookFunction(MQSupport.channels[ channelKey ], topic);
+					MQSupport.channels[ channelKey ].registerNewHook = MQSupport.registerNewHookFunction(MQSupport.channels[ channelKey ], topic);
 				}
 			}
 
@@ -206,6 +203,21 @@ class MQSupport {
 			return MQSupport.channels[ channelKey ];
 		} catch (error) {
 			await MQSupport.retryChannel(mode, topic);
+		}
+	}
+
+	static async recvMQMess(topic, callback) {
+		try {
+			if (
+				!MQSupport.MQ_TOPICS[ topic ]
+				|| ( !_.isFunction( callback ) && !_.isArray( callback ) )
+			) throw new Error('Invalid input');
+
+			const cachedChannel = await MQSupport.getConnectedChannel('receiving', topic);
+
+			await cachedChannel.registerNewHook(callback);
+		} catch (error) {
+			throw error;
 		}
 	}
 
@@ -233,16 +245,19 @@ class MQService {
 
 	static async hookListeners(listeners) {
 		try {
-			const listenerConfigs = _.values(listeners);
+			const groupByTopicObj = _.chain(listeners)
+			.reduce((memo, listener) => {
+				if ( !memo[ listener[0] ] ) memo[ listener[0] ] = [];
 
-			if (!listenerConfigs.length) return;
+				memo[ listener[0] ].push(listener);
 
-			if (_.some(listenerConfigs, config => config.length !== 3)) throw new Error('Invalid listener');
+				return memo;
+			}, {})
+			.values()
+			.value();
 
-			const sortedListeners = _.sortBy( listenerConfigs, config => config[ 1 ] );
-
-			for (let index = 0; index < sortedListeners.length; index++) {
-				await MQService.recvMQMess(sortedListeners[index][0], sortedListeners[index][2]);
+			for (let index = 0; index < groupByTopicObj.length; index++) {
+				await MQSupport.recvMQMess(groupByTopicObj[index][0][0], _.chain(groupByTopicObj[index]).sortBy(i=>i[1]).map(i=>i[2]).value());
 			}
 		} catch (error) {
 			throw error;
@@ -256,18 +271,6 @@ class MQService {
 			const cachedChannel = await MQSupport.getConnectedChannel('sending', topic, options);
 
 			await cachedChannel.send(msg);
-		} catch (error) {
-			throw error;
-		}
-	}
-
-	static async recvMQMess(topic, callback) {
-		try {
-			if (!MQSupport.MQ_TOPICS[ topic ] || typeof callback !== 'function') throw new Error('Invalid input');
-
-			const cachedChannel = await MQSupport.getConnectedChannel('receiving', topic);
-
-			await cachedChannel.registerNewHook(callback);
 		} catch (error) {
 			throw error;
 		}
