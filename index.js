@@ -26,7 +26,7 @@ class MQSupport {
 	static init(topics, sequelizeConnection) {
 		MQSupport.sequelizeConnection = sequelizeConnection;
 		MQSupport.MQ_TOPICS = _.reduce( topics, ( memo, topic ) => {
-			memo[ topic ] = `${ MQSupport.MQ_CONFIGS[NODE_ENV] }.${ topic }`;
+			memo[ topic ] = `${ MQSupport.MQ_CONFIGS.NODE_ENV || 'dev' }.${ topic }`;
 
 			return memo;
 		}, MQSupport.MQ_TOPICS );
@@ -126,7 +126,7 @@ class MQSupport {
 		try {
 			if (!MQSupport.isAlive) {
 				MQSupport.connection = await amqplib
-				.connect(`${MQSupport.MQ_CONFIGS[MQ_PROTOCOL]}://${MQSupport.MQ_CONFIGS[MQ_USER]}:${MQSupport.MQ_CONFIGS[MQ_PASSWORD]}@${MQSupport.MQ_CONFIGS[MQ_HOST]}/${MQSupport.MQ_CONFIGS[MQ_VIRTUAL_PATH]}`);
+				.connect(`${MQSupport.MQ_CONFIGS.MQ_PROTOCOL}://${MQSupport.MQ_CONFIGS.MQ_USER}:${MQSupport.MQ_CONFIGS.MQ_PASSWORD}@${MQSupport.MQ_CONFIGS.MQ_HOST}/${MQSupport.MQ_CONFIGS.MQ_VIRTUAL_PATH}`);
 
 				MQSupport.connection.on('error', async () => {
 					await MQSupport.retryConnection();
