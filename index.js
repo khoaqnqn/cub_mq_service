@@ -190,7 +190,7 @@ class MQSupport {
 				MQSupport.channels[ channelKey ].isAlive = true;
 
 				if (mode === 'sending') {
-					if ( !options || !options.prefetch ) {
+					if ( !options || !_.has( options, 'prefetch' ) || options.prefetch === true ) {
 						MQSupport.channels[ channelKey ].channel.prefetch( 1 );
 					}
 
