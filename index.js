@@ -193,11 +193,11 @@ class MQSupport {
 				MQSupport.channels[ channelKey ].topic = topic;
 				MQSupport.channels[ channelKey ].isAlive = true;
 
-				if (mode === 'sending') {
-					if ( !options || !_.has( options, 'prefetch' ) || options.prefetch === true ) {
-						MQSupport.channels[ channelKey ].channel.prefetch( 1 );
-					}
+				if ( !options || !_.has( options, 'prefetch' ) || options.prefetch === true ) {
+					MQSupport.channels[ channelKey ].channel.prefetch( 1 );
+				}
 
+				if (mode === 'sending') {
 					MQSupport.channels[ channelKey ].send = MQSupport.sendFunction(MQSupport.channels[ channelKey ], topic);
 				} else if (mode === 'receiving') {
 					MQSupport.channels[ channelKey ].registerNewHook = MQSupport.registerNewHookFunction(MQSupport.channels[ channelKey ], topic);
