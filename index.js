@@ -38,7 +38,9 @@ class MQSupport {
 	}
 
 	static sendFunction = (connectedChannel, topic) => async msg => {
-		const encodedMsg = CryptoJS.AES.encrypt(JSON.stringify(msg), MQSupport.encodingKeys[ topic ]).toString();
+		const encodedMsg = MQSupport.MQ_CONFIGS[ ENCRYPT_MESSAGES ]
+			? CryptoJS.AES.encrypt(JSON.stringify(msg), MQSupport.encodingKeys[ topic ]).toString()
+			: JSON.stringify(msg);
 
 		await connectedChannel.channel.sendToQueue(MQSupport.MQ_TOPICS[ topic ], Buffer.from(encodedMsg), { persistent: true });
 	};
@@ -79,7 +81,11 @@ class MQSupport {
 				try {
 					const rawMsg = msg.content.toString();
 
-					decodedMsg = JSON.parse(CryptoJS.AES.decrypt(rawMsg, MQSupport.encodingKeys[ topic ]).toString(CryptoJS.enc.Utf8));
+					decodedMsg = JSON.parse(
+						MQSupport.MQ_CONFIGS[ ENCRYPT_MESSAGES ]
+							? CryptoJS.AES.decrypt(rawMsg, MQSupport.encodingKeys[ topic ]).toString(CryptoJS.enc.Utf8)
+							: rawMsg
+					);
 				} catch (error) {
 					decodedMsg = { error };
 				}
