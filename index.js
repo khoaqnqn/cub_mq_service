@@ -38,7 +38,7 @@ class MQSupport {
 	}
 
 	static sendFunction = (connectedChannel, topic) => async msg => {
-		const encodedMsg = MQSupport.MQ_CONFIGS[ ENCRYPT_MESSAGES ]
+		const encodedMsg = MQSupport.MQ_CONFIGS.ENCRYPT_MESSAGES
 			? CryptoJS.AES.encrypt(JSON.stringify(msg), MQSupport.encodingKeys[ topic ]).toString()
 			: JSON.stringify(msg);
 
@@ -82,7 +82,7 @@ class MQSupport {
 					const rawMsg = msg.content.toString();
 
 					decodedMsg = JSON.parse(
-						MQSupport.MQ_CONFIGS[ ENCRYPT_MESSAGES ]
+						MQSupport.MQ_CONFIGS.ENCRYPT_MESSAGES
 							? CryptoJS.AES.decrypt(rawMsg, MQSupport.encodingKeys[ topic ]).toString(CryptoJS.enc.Utf8)
 							: rawMsg
 					);
