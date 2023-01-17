@@ -100,6 +100,8 @@ class MQSupport {
 
 				transaction && await transaction.commit();
 			} catch (error) {
+				console.log( error );
+
 				await connectedChannel.channel.nack(msg);
 
 				transaction && await transaction.rollback();
