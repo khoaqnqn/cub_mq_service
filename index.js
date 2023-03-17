@@ -134,7 +134,14 @@ class MQSupport {
 		try {
 			if (!MQSupport.isAlive) {
 				MQSupport.connection = await amqplib
-				.connect(`${MQSupport.MQ_CONFIGS.MQ_PROTOCOL}://${MQSupport.MQ_CONFIGS.MQ_USER}:${MQSupport.MQ_CONFIGS.MQ_PASSWORD}@${MQSupport.MQ_CONFIGS.MQ_HOST}/${MQSupport.MQ_CONFIGS.MQ_VIRTUAL_PATH}`);
+				.connect({
+					protocol: MQSupport.MQ_CONFIGS.MQ_PROTOCOL,
+					hostname: MQSupport.MQ_CONFIGS.MQ_HOST,
+					port: MQSupport.MQ_CONFIGS.MQ_PORT,
+					username: MQSupport.MQ_CONFIGS.MQ_USER,
+					password: MQSupport.MQ_CONFIGS.MQ_PASSWORD,
+					vhost: MQSupport.MQ_CONFIGS.MQ_VIRTUAL_PATH,
+				});
 
 				MQSupport.connection.on('error', async () => {
 					await MQSupport.retryConnection();
