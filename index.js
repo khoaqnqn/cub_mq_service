@@ -96,13 +96,12 @@ class MQSupport {
 					await connectedChannel.hooks[ index ](decodedMsg, transaction);
 				}
 
-				await connectedChannel.channel.ack(msg);
+				(!MQSupport.MQ_CONFIGS.MQ_AUTO_ACK === false)
+					? await MQSupport.nack(connectedChannel, msg, transaction)
+					: await MQSupport.ack(connectedChannel, msg, transaction);
 
-				transaction && await transaction.commit();
 			} catch (error) {
-				await connectedChannel.channel.nack(msg);
-
-				transaction && await transaction.rollback();
+				await MQSupport.nack(connectedChannel, msg, transaction);
 
 				console.error( topic, error );
 
@@ -236,6 +235,18 @@ class MQSupport {
 		} catch (error) {
 			throw error;
 		}
+	}
+
+	static async ack(connectedChannel, msg, transaction = undefined) {
+		await connectedChannel.channel.ack(msg);
+
+		transaction && await transaction.commit();
+	}
+
+	static async nack(connectedChannel, msg, transaction = undefined) {
+		await connectedChannel.channel.nack(msg);
+
+		transaction && await transaction.rollback();
 	}
 
 }
