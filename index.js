@@ -2,6 +2,8 @@ const amqplib = require( 'amqplib' );
 const CryptoJS = require( 'crypto-js' );
 const _ = require( 'lodash' );
 
+let countRetryQueue = 0;
+
 class MQSupport {
 
 	static sequelizeConnection;
@@ -14,6 +16,9 @@ class MQSupport {
 
 	static MQ_TOPICS = {};
 	static encodingKeys;
+
+	static DELAY_QUEUE_TIME = 5000;
+	static MAX_RETRY_QUEUE = 3;
 
 	static config(configs) {
 		MQSupport.MQ_CONFIGS = _.reduce( configs, ( memo, config, key ) => {
@@ -100,12 +105,23 @@ class MQSupport {
 					? await MQSupport.nack(connectedChannel, msg, transaction)
 					: await MQSupport.ack(connectedChannel, msg, transaction);
 
+				countRetryQueue = 0;	
 			} catch (error) {
-				await MQSupport.nack(connectedChannel, msg, transaction);
+				transaction && await transaction.rollback();
 
-				console.error( topic, error );
+				countRetryQueue++;
 
-				await connectedChannel.channel.close();
+				if ( countRetryQueue <= MQSupport.MAX_RETRY_QUEUE ) {
+					await MQSupport.pushToDelayedQueue(connectedChannel ,msg);
+					await connectedChannel.channel.ack(msg);
+				} else {
+					await connectedChannel.channel.nack(msg);
+					await connectedChannel.channel.close();
+
+					countRetryQueue = 0;
+
+					console.error( topic, error );
+				}
 			}
 		};
 	}
@@ -214,7 +230,17 @@ class MQSupport {
 				}
 			}
 
-			await MQSupport.channels[ channelKey ].channel.assertQueue(encodedTopic, { durable: true });
+			await MQSupport.channels[ channelKey ].channel.assertExchange('TTL', 'direct', { durable: true } );
+
+			await MQSupport.channels[ channelKey ].channel.assertExchange('DLX', 'fanout', { durable: true } );
+
+			await MQSupport.channels[ channelKey ].channel.assertQueue(`${encodedTopic}`, { durable: true });
+
+			await MQSupport.channels[ channelKey ].channel.assertQueue(`${encodedTopic}-RETRY`, { durable: true, deadLetterExchange: 'DLX', messageTtl: 10000 });
+
+			await MQSupport.channels[ channelKey ].channel.bindQueue(encodedTopic, 'DLX' );
+
+			await MQSupport.channels[ channelKey ].channel.bindQueue(`${encodedTopic}-RETRY`, 'TTL', 'RETRY' );
 
 			return MQSupport.channels[ channelKey ];
 		} catch (error) {
@@ -247,6 +273,16 @@ class MQSupport {
 		await connectedChannel.channel.nack(msg);
 
 		transaction && await transaction.rollback();
+	}
+
+	static async pushToDelayedQueueRetry( connectedChannel, msg ) {
+		await connectedChannel.channel.publish( 'TTL', 'RETRY' , Buffer.from(JSON.stringify(msg.content.toString())), {
+			persistent: true,
+			headers: {
+				'x-delay': MQSupport.DELAY_QUEUE_TIME,
+				'x-retry-count': MQSupport.MAX_RETRY_QUEUE,
+			}
+		} );
 	}
 
 }
