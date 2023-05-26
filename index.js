@@ -112,7 +112,7 @@ class MQSupport {
 				countRetryQueue++;
 
 				if ( countRetryQueue <= MQSupport.MAX_RETRY_QUEUE ) {
-					await MQSupport.pushToDelayedQueue(connectedChannel ,msg);
+					await MQSupport.pushToDelayedQueueRetry(connectedChannel ,msg);
 					await connectedChannel.channel.ack(msg);
 				} else {
 					await connectedChannel.channel.nack(msg);
