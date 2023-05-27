@@ -47,7 +47,11 @@ class MQSupport {
 			? CryptoJS.AES.encrypt(JSON.stringify(msg), MQSupport.encodingKeys[ topic ]).toString()
 			: JSON.stringify(msg);
 
-		await connectedChannel.channel.sendToQueue(MQSupport.MQ_TOPICS[ topic ], Buffer.from(encodedMsg), { persistent: true });
+		await connectedChannel.channel.assertQueue(MQSupport.MQ_TOPICS[ topic ]);
+
+		await connectedChannel.channel.bindQueue(MQSupport.MQ_TOPICS[ topic ], 'TTL', '');
+
+		await connectedChannel.channel.publish('TTL', '', Buffer.from(encodedMsg), { persistent: true });
 	};
 
 	static registerNewHookFunction = (connectedChannel, topic) => async callback => {
@@ -234,7 +238,7 @@ class MQSupport {
 
 			await MQSupport.channels[ channelKey ].channel.assertExchange('DLX', 'fanout', { durable: true } );
 
-			await MQSupport.channels[ channelKey ].channel.assertQueue(`${encodedTopic}`, { durable: true });
+			await MQSupport.channels[ channelKey ].channel.assertQueue(encodedTopic, { durable: true });
 
 			await MQSupport.channels[ channelKey ].channel.assertQueue(`${encodedTopic}-RETRY`, { durable: true, deadLetterExchange: 'DLX', messageTtl: 10000 });
 
