@@ -6,6 +6,8 @@ let countRetryQueue = 0;
 
 class MQSupport {
 
+	static NODE_ENV;
+
 	static sequelizeConnection;
 
 	static connection;
@@ -17,7 +19,10 @@ class MQSupport {
 	static MQ_TOPICS = {};
 	static encodingKeys;
 
-	static DELAY_QUEUE_TIME = 5000;
+	static DLX_EXCHANGE = 'DLX';
+	static TTL_EXCHANGE = 'TTL';
+
+	static DELAY_QUEUE_TIME = 10000;
 	static MAX_RETRY_QUEUE = 3;
 
 	static config(configs) {
@@ -30,8 +35,11 @@ class MQSupport {
 
 	static init(topics, sequelizeConnection) {
 		MQSupport.sequelizeConnection = sequelizeConnection;
+
+		MQSupport.NODE_ENV = MQSupport.MQ_CONFIGS.NODE_ENV || 'development';
+
 		MQSupport.MQ_TOPICS = _.reduce( topics, ( memo, topic ) => {
-			memo[ topic ] = `${ MQSupport.MQ_CONFIGS.NODE_ENV || 'dev' }.${ topic }`;
+			memo[ topic ] = `${MQSupport.NODE_ENV}.${ topic }`;
 
 			return memo;
 		}, MQSupport.MQ_TOPICS );
@@ -47,7 +55,11 @@ class MQSupport {
 			? CryptoJS.AES.encrypt(JSON.stringify(msg), MQSupport.encodingKeys[ topic ]).toString()
 			: JSON.stringify(msg);
 
-		await connectedChannel.channel.sendToQueue(MQSupport.MQ_TOPICS[ topic ], Buffer.from(encodedMsg), { persistent: true });
+		await connectedChannel.channel.assertQueue(MQSupport.MQ_TOPICS[ topic ]);
+
+		await connectedChannel.channel.bindQueue(MQSupport.MQ_TOPICS[ topic ], `${MQSupport.NODE_ENV}.${MQSupport.DLX_EXCHANGE}.${topic}`, '');
+
+		await connectedChannel.channel.publish(`${MQSupport.NODE_ENV}.${MQSupport.DLX_EXCHANGE}.${topic}`, '', Buffer.from(encodedMsg), { persistent: true });
 	};
 
 	static registerNewHookFunction = (connectedChannel, topic) => async callback => {
@@ -101,7 +113,7 @@ class MQSupport {
 					await connectedChannel.hooks[ index ](decodedMsg, transaction);
 				}
 
-				(!MQSupport.MQ_CONFIGS.MQ_AUTO_ACK === false)
+				(!!MQSupport.MQ_CONFIGS.MQ_AUTO_ACK === false)
 					? await MQSupport.nack(connectedChannel, msg, transaction)
 					: await MQSupport.ack(connectedChannel, msg, transaction);
 
@@ -112,7 +124,9 @@ class MQSupport {
 				countRetryQueue++;
 
 				if ( countRetryQueue <= MQSupport.MAX_RETRY_QUEUE ) {
-					await MQSupport.pushToDelayedQueue(connectedChannel ,msg);
+					console.log(`${topic} retry ${countRetryQueue}`);
+
+					await MQSupport.pushToDelayedQueueRetry(connectedChannel, topic, msg, countRetryQueue);
 					await connectedChannel.channel.ack(msg);
 				} else {
 					await connectedChannel.channel.nack(msg);
@@ -229,18 +243,18 @@ class MQSupport {
 					MQSupport.channels[ channelKey ].registerNewHook = MQSupport.registerNewHookFunction(MQSupport.channels[ channelKey ], topic);
 				}
 			}
+		
+			const TTL_PREFIX_EXCHANGE = `${MQSupport.NODE_ENV}.${MQSupport.TTL_EXCHANGE}.${topic}`;
+			const DLX_PREFIX_EXCHANGE = `${MQSupport.NODE_ENV}.${MQSupport.DLX_EXCHANGE}.${topic}`;
 
-			await MQSupport.channels[ channelKey ].channel.assertExchange('TTL', 'direct', { durable: true } );
+			await MQSupport.channels[ channelKey ].channel.assertExchange(TTL_PREFIX_EXCHANGE, 'direct', { durable: true } );
+			await MQSupport.channels[ channelKey ].channel.assertExchange(DLX_PREFIX_EXCHANGE, 'direct', { durable: true } );
 
-			await MQSupport.channels[ channelKey ].channel.assertExchange('DLX', 'fanout', { durable: true } );
+			await MQSupport.channels[ channelKey ].channel.assertQueue(encodedTopic, { durable: true });
+			await MQSupport.channels[ channelKey ].channel.assertQueue(`${encodedTopic}-RETRY`, { durable: true, deadLetterExchange: DLX_PREFIX_EXCHANGE, messageTtl: 30000 });
 
-			await MQSupport.channels[ channelKey ].channel.assertQueue(`${encodedTopic}`, { durable: true });
-
-			await MQSupport.channels[ channelKey ].channel.assertQueue(`${encodedTopic}-RETRY`, { durable: true, deadLetterExchange: 'DLX', messageTtl: 10000 });
-
-			await MQSupport.channels[ channelKey ].channel.bindQueue(encodedTopic, 'DLX' );
-
-			await MQSupport.channels[ channelKey ].channel.bindQueue(`${encodedTopic}-RETRY`, 'TTL', 'RETRY' );
+			await MQSupport.channels[ channelKey ].channel.bindQueue(encodedTopic, DLX_PREFIX_EXCHANGE);
+			await MQSupport.channels[ channelKey ].channel.bindQueue(`${encodedTopic}-RETRY`, TTL_PREFIX_EXCHANGE);
 
 			return MQSupport.channels[ channelKey ];
 		} catch (error) {
@@ -275,12 +289,12 @@ class MQSupport {
 		transaction && await transaction.rollback();
 	}
 
-	static async pushToDelayedQueueRetry( connectedChannel, msg ) {
-		await connectedChannel.channel.publish( 'TTL', 'RETRY' , Buffer.from(JSON.stringify(msg.content.toString())), {
+	static async pushToDelayedQueueRetry(connectedChannel, topic, msg, countRetryQueue) {
+		await connectedChannel.channel.publish(`${MQSupport.NODE_ENV}.${MQSupport.TTL_EXCHANGE}.${topic}`, '', Buffer.from(msg.content.toString()), {
 			persistent: true,
 			headers: {
 				'x-delay': MQSupport.DELAY_QUEUE_TIME,
-				'x-retry-count': MQSupport.MAX_RETRY_QUEUE,
+				'x-retry-count': countRetryQueue
 			}
 		} );
 	}
