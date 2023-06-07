@@ -114,7 +114,7 @@ class MQSupport {
 					await connectedChannel.hooks[ index ](decodedMsg, transaction);
 				}
 
-				(!!MQSupport.MQ_CONFIGS.MQ_AUTO_ACK === false)
+				(MQSupport?.MQ_CONFIGS?.MQ_AUTO_ACK === false)
 					? await MQSupport.nack(connectedChannel, msg, transaction)
 					: await MQSupport.ack(connectedChannel, msg, transaction);
 
