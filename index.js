@@ -22,9 +22,9 @@ class MQSupport {
 	static DLX_EXCHANGE = 'DLX';
 	static TTL_EXCHANGE = 'TTL';
 
-	static DELAY_QUEUE_TIME = 10000;
+	static DELAY_QUEUE_TIME = 30000;
 	static MAX_RETRY_QUEUE = 3;
-	static MESSAGE_TTL_TIME = 30000;
+	static MESSAGE_TTL_TIME = 50000;
 
 	static config(configs) {
 		MQSupport.MQ_CONFIGS = _.reduce( configs, ( memo, config, key ) => {
